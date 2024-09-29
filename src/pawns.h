@@ -39,13 +39,13 @@ struct Entry {
   int blocked_count() const { return blockedCount; }
 
   template<Color Us>
-  Score king_safety(const Position& pos) {
+  Score king_safety(const Position& pos, std::stringstream *analysis) {
     return  kingSquares[Us] == pos.square<KING>(Us) && castlingRights[Us] == pos.castling_rights(Us)
-          ? kingSafety[Us] : (kingSafety[Us] = do_king_safety<Us>(pos));
+          ? kingSafety[Us] : (kingSafety[Us] = do_king_safety<Us>(pos, analysis));
   }
 
   template<Color Us>
-  Score do_king_safety(const Position& pos);
+  Score do_king_safety(const Position& pos, std::stringstream *analysis);
 
   template<Color Us>
   Score evaluate_shelter(const Position& pos, Square ksq) const;
@@ -63,7 +63,7 @@ struct Entry {
 
 typedef HashTable<Entry, 131072> Table;
 
-Entry* probe(const Position& pos);
+Entry* probe(const Position& pos, std::stringstream *analysis);
 
 } // namespace Stockfish::Pawns
 

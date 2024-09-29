@@ -32,6 +32,7 @@ namespace Eval {
 
   std::string trace(Position& pos);
   Value evaluate(const Position& pos, int* complexity = nullptr);
+  std::string printSquaredOfPieces(Bitboard b);
 
   extern bool useNNUE;
   extern std::string currentEvalFileName;
@@ -43,7 +44,7 @@ namespace Eval {
 
   namespace NNUE {
 
-    std::string trace(Position& pos);
+    std::string trace(Position& pos, std::stringstream *analysis);
     Value evaluate(const Position& pos, bool adjusted = false, int* complexity = nullptr);
 
     void init();

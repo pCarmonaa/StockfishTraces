@@ -23,6 +23,7 @@
 #include <deque>
 #include <memory> // For std::unique_ptr
 #include <string>
+#include <sstream>
 
 #include "bitboard.h"
 #include "evaluate.h"

@@ -64,7 +64,7 @@ struct Entry {
 
 typedef HashTable<Entry, 8192> Table;
 
-Entry* probe(const Position& pos);
+Entry* probe(const Position& pos, std::stringstream *analysis);
 
 } // namespace Stockfish::Material
 

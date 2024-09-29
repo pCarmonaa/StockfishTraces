@@ -23,6 +23,7 @@
 #include "pawns.h"
 #include "position.h"
 #include "thread.h"
+#include "evaluate.h"
 
 namespace Stockfish {
 
@@ -78,20 +79,18 @@ namespace {
   #undef S
   #undef V
 
-
   /// evaluate() calculates a score for the static pawn structure of the given position.
   /// We cannot use the location of pieces or king in this function, as the evaluation
   /// of the pawn structure will be stored in a small cache for speed reasons, and will
   /// be re-used even when the pieces have moved.
-
   template<Color Us>
-  Score evaluate(const Position& pos, Pawns::Entry* e) {
+  Score evaluate(const Position& pos, Pawns::Entry* e, std::stringstream *analysis) {
 
     constexpr Color     Them = ~Us;
     constexpr Direction Up   = pawn_push(Us);
     constexpr Direction Down = -Up;
 
-    Bitboard neighbours, stoppers, support, phalanx, opposed;
+    Bitboard neighbors, stoppers, support, phalanx, opposed;
     Bitboard lever, leverPush, blocked;
     Square s;
     bool backward, passed, doubled;
@@ -109,24 +108,26 @@ namespace {
     e->blockedCount += popcount(shift<Up>(ourPawns) & (theirPawns | doubleAttackThem));
 
     // Loop through all pawns of the current color and score each pawn
+    *analysis << "Pawn structure of " << (Us ? "Black" : "White") << "\n";
     while (b)
     {
         s = pop_lsb(b);
-
+        *analysis << "\tPawn of " << SquareString[s] << " square:\n";
+        
         assert(pos.piece_on(s) == make_piece(Us, PAWN));
 
         Rank r = relative_rank(Us, s);
-
         // Flag the pawn
         opposed    = theirPawns & forward_file_bb(Us, s);
+        
         blocked    = theirPawns & (s + Up);
         stoppers   = theirPawns & passed_pawn_span(Us, s);
         lever      = theirPawns & pawn_attacks_bb(Us, s);
         leverPush  = theirPawns & pawn_attacks_bb(Us, s + Up);
         doubled    = ourPawns   & (s - Up);
-        neighbours = ourPawns   & adjacent_files_bb(s);
-        phalanx    = neighbours & rank_bb(s);
-        support    = neighbours & rank_bb(s - Up);
+        neighbors = ourPawns   & adjacent_files_bb(s);
+        phalanx    = neighbors & rank_bb(s);
+        support    = neighbors & rank_bb(s - Up);
 
         if (doubled)
         {
@@ -137,7 +138,7 @@ namespace {
 
         // A pawn is backward when it is behind all pawns of the same color on
         // the adjacent files and cannot safely advance.
-        backward =  !(neighbours & forward_ranks_bb(Them, s + Up))
+        backward =  !(neighbors & forward_ranks_bb(Them, s + Up))
                   && (leverPush | blocked);
 
         // Compute additional span if pawn is not backward nor blocked
@@ -155,7 +156,7 @@ namespace {
                 || (   stoppers == blocked && r >= RANK_5
                     && (shift<Up>(support) & ~(theirPawns | doubleAttackThem)));
 
-        passed &= !(forward_file_bb(Us, s) & ourPawns);
+        passed &= !(forward_file_bb(Us, s) & ourPawns);        
 
         // Passed pawns will be properly scored later in evaluation when we have
         // full attack info.
@@ -171,7 +172,7 @@ namespace {
             score += make_score(v, v * (r - 2) / 4);
         }
 
-        else if (!neighbours)
+        else if (!neighbors)
         {
             if (     opposed
                 &&  (ourPawns & forward_file_bb(Them, s))
@@ -192,11 +193,50 @@ namespace {
 
         if (blocked && r >= RANK_5)
             score += BlockedPawn[r - RANK_5];
+      
+        if(opposed) {
+          *analysis << "\t\tOpposed pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(opposed);
+        }
+        if(blocked){
+          *analysis << "\t\tBlocked pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(blocked);
+        }
+        if(stoppers){  
+          *analysis << "\t\tStoppers pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(stoppers);
+        }
+        if(lever){  
+          *analysis << "\t\tLever pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(lever);
+        }
+        if(leverPush){  
+          *analysis << "\t\tLeverPush pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(leverPush);
+        }
+        if(doubled){  
+          *analysis << "\t\tDoubled pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(doubled);
+        }
+        if(neighbors){  
+          *analysis << "\t\tNeighbors pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(neighbors);
+        }
+        if(phalanx){  
+          *analysis << "\t\tPhalanx pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(phalanx);
+        }
+        if(support){  
+          *analysis << "\t\tSupport pawns: "
+                    << Stockfish::Eval::printSquaredOfPieces(support);
+        }
+        
+        *analysis << "\t\tIs a backward pawn: " << (backward ? "true" : "false") << "\n";
+        *analysis << "\t\tIs a passed pawn: " << (passed ? "true" : "false") << "\n\n";
     }
 
     return score;
   }
-
 } // namespace
 
 namespace Pawns {
@@ -207,7 +247,7 @@ namespace Pawns {
 /// is found. Otherwise a new Entry is computed and stored there, so we don't
 /// have to recompute all when the same pawns configuration occurs again.
 
-Entry* probe(const Position& pos) {
+Entry* probe(const Position& pos, std::stringstream *analysis) {
 
   Key key = pos.pawn_key();
   Entry* e = pos.this_thread()->pawnsTable[key];
@@ -217,8 +257,8 @@ Entry* probe(const Position& pos) {
 
   e->key = key;
   e->blockedCount = 0;
-  e->scores[WHITE] = evaluate<WHITE>(pos, e);
-  e->scores[BLACK] = evaluate<BLACK>(pos, e);
+  e->scores[WHITE] = evaluate<WHITE>(pos, e, analysis);
+  e->scores[BLACK] = evaluate<BLACK>(pos, e, analysis);
 
   return e;
 }
@@ -267,10 +307,10 @@ Score Entry::evaluate_shelter(const Position& pos, Square ksq) const {
 /// when king square changes, which is about 20% of total king_safety() calls.
 
 template<Color Us>
-Score Entry::do_king_safety(const Position& pos) {
+Score Entry::do_king_safety(const Position& pos, std::stringstream *analysis) {
 
   Square ksq = pos.square<KING>(Us);
-  kingSquares[Us] = ksq;
+  kingSquares[Us] = ksq;  
   castlingRights[Us] = pos.castling_rights(Us);
   auto compare = [](Score a, Score b) { return mg_value(a) < mg_value(b); };
 
@@ -278,9 +318,11 @@ Score Entry::do_king_safety(const Position& pos) {
 
   // If we can castle use the bonus after castling if it is bigger
 
+  *analysis << "\tKing side castle availabe: " << (pos.can_castle(Us & KING_SIDE) ? "true" : "false") << "\n";
   if (pos.can_castle(Us & KING_SIDE))
       shelter = std::max(shelter, evaluate_shelter<Us>(pos, relative_square(Us, SQ_G1)), compare);
 
+  *analysis << "\tQueen side castle availabe: " << (pos.can_castle(Us & KING_SIDE) ? "true" : "false") << "\n";
   if (pos.can_castle(Us & QUEEN_SIDE))
       shelter = std::max(shelter, evaluate_shelter<Us>(pos, relative_square(Us, SQ_C1)), compare);
 
@@ -297,8 +339,8 @@ Score Entry::do_king_safety(const Position& pos) {
 }
 
 // Explicit template instantiation
-template Score Entry::do_king_safety<WHITE>(const Position& pos);
-template Score Entry::do_king_safety<BLACK>(const Position& pos);
+template Score Entry::do_king_safety<WHITE>(const Position& pos, std::stringstream *analysis);
+template Score Entry::do_king_safety<BLACK>(const Position& pos, std::stringstream *analysis);
 
 } // namespace Pawns
 

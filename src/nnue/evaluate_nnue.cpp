@@ -259,7 +259,7 @@ namespace Stockfish::Eval::NNUE {
   // trace() returns a string with the value of each piece on a board,
   // and a table for (PSQT, Layers) values bucket by bucket.
 
-  std::string trace(Position& pos) {
+  std::string trace(Position& pos, std::stringstream *analysis) {
 
     std::stringstream ss;
 
@@ -269,7 +269,7 @@ namespace Stockfish::Eval::NNUE {
       board[row][8*8+1] = '\0';
 
     // A lambda to output one box of the board
-    auto writeSquare = [&board](File file, Rank rank, Piece pc, Value value) {
+    auto writeSquare = [&board](File file, Rank rank, Piece pc, Value value, std::stringstream *analysis) {
 
       const int x = ((int)file) * 8;
       const int y = (7 - (int)rank) * 3;
@@ -280,8 +280,11 @@ namespace Stockfish::Eval::NNUE {
       board[y][x] = board[y][x+8] = board[y+3][x+8] = board[y+3][x] = '+';
       if (pc != NO_PIECE)
         board[y+1][x+4] = PieceToChar[pc];
-      if (value != VALUE_NONE)
+      if (value != VALUE_NONE) {
         format_cp_compact(value, &board[y+2][x+2]);
+        *analysis << (pc>6 ? "Black " : "White ") << PieceString[pc > 6 ? pc-8 : pc] << " of " << SquareString[make_square(file, rank)]
+                  << ": " << std::abs((double)value / UCI::NormalizeToPawnValue) << "\n";
+      }
     };
 
     // We estimate the value of each piece by doing a differential evaluation from
@@ -313,7 +316,7 @@ namespace Stockfish::Eval::NNUE {
           st->accumulator.computed[BLACK] = false;
         }
 
-        writeSquare(f, r, pc, v);
+        writeSquare(f, r, pc, v, analysis);
       }
 
     ss << " NNUE derived piece values:\n";

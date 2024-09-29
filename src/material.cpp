@@ -123,7 +123,7 @@ namespace Material {
 /// is found. Otherwise a new Entry is computed and stored there, so we don't
 /// have to recompute all when the same material configuration occurs again.
 
-Entry* probe(const Position& pos) {
+Entry* probe(const Position& pos, std::stringstream *analysis) {
 
   Key key = pos.material_key();
   Entry* e = pos.this_thread()->materialTable[key];
@@ -138,6 +138,8 @@ Entry* probe(const Position& pos) {
   Value npm_w = pos.non_pawn_material(WHITE);
   Value npm_b = pos.non_pawn_material(BLACK);
   Value npm   = std::clamp(npm_w + npm_b, EndgameLimit, MidgameLimit);
+
+
 
   // Map total non-pawn material into [PHASE_ENDGAME, PHASE_MIDGAME]
   e->gamePhase = Phase(((npm - EndgameLimit) * PHASE_MIDGAME) / (MidgameLimit - EndgameLimit));
@@ -211,6 +213,25 @@ Entry* probe(const Position& pos) {
       e->factor[BLACK] = uint8_t(npm_b <  RookValueMg   ? SCALE_FACTOR_DRAW :
                                  npm_w <= BishopValueMg ? 4 : 14);
 
+  // Pieces of each player
+  *analysis << "\nWhite matetial: \n";
+  *analysis << "\tPawns: " << pos.count<PAWN>(WHITE) << "\n";
+  *analysis << "\tBishops: " << pos.count<BISHOP>(WHITE) << "\n";
+  *analysis << "\tBishops pair:" << (pos.count<BISHOP>(WHITE) > 1 ? "true" : "false") << "\n";
+  *analysis << "\tKnight: " << pos.count<KNIGHT>(WHITE) << "\n";
+  *analysis << "\tRooks: " << pos.count<ROOK>(WHITE) << "\n";
+  *analysis << "\tQueens: " << pos.count<QUEEN>(WHITE) << "\n";
+
+  *analysis << "\nBlack matetial: \n";
+  *analysis << "\tPawns: " << pos.count<PAWN>(BLACK) << "\n";
+  *analysis << "\tBishops: " << pos.count<BISHOP>(BLACK) << "\n";
+  *analysis << "\tBishops pair:" << (pos.count<BISHOP>(BLACK) > 1 ? "true" : "false") << "\n";
+  *analysis << "\tKnight: " << pos.count<KNIGHT>(BLACK) << "\n";
+  *analysis << "\tRooks: " << pos.count<ROOK>(BLACK) << "\n";
+  *analysis << "\tQueens: " << pos.count<QUEEN>(BLACK) << "\n";
+
+  *analysis << "\n\n";
+
   // Evaluate the material imbalance. We use PIECE_TYPE_NONE as a place holder
   // for the bishop pair "extended piece", which allows us to be more flexible
   // in defining bishop pair bonuses.
@@ -221,6 +242,7 @@ Entry* probe(const Position& pos) {
     pos.count<BISHOP>(BLACK)    , pos.count<ROOK>(BLACK), pos.count<QUEEN >(BLACK) } };
 
   e->score = (imbalance<WHITE>(pieceCount) - imbalance<BLACK>(pieceCount)) / 16;
+
   return e;
 }
 
